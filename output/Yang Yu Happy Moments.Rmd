@@ -1,0 +1,269 @@
+---
+title: "Happy Moments"
+output: html_document
+date: "2024-01-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Install packages
+```{r, warning=FALSE, message=FALSE,echo=FALSE}
+if (!require("tidyverse")) install.packages("tidyverse")
+if (!require("tidytext")) install.packages("tidytext")
+if (!require("DT")) install.packages("DT")
+if (!require("tibble")) install.packages("tibble")
+if (!require("rCharts")) install.packages("rCharts")
+if (!require("htmlwidgets")) install.packages("htmlwidgets")
+if (!require("tm")) install.packages("tm")
+if (!require("broom")) install.packages("broom")
+if (!require("wordcloud")) install.packages("wordcloud")
+if (!require("RColorBrewer")) install.packages("RColorBrewer")
+if (!require("ggwordcloud")) install.packages("ggwordcloud")
+```
+
+Install additional packages
+```{r, warning=FALSE, message=FALSE,echo=FALSE}
+if (!require("devtools")) install.packages("devtools")
+devtools::install_github("ramnathv/rCharts")
+```
+
+Load packages 
+```{r, warning=FALSE, message=FALSE,echo=FALSE}
+library(tidyverse)   
+library(tidytext)     
+library(DT)           
+library(tibble)       
+library(rCharts)      
+library(htmlwidgets) 
+library(ggplot2)
+library(tm)
+library(broom)
+library(dplyr)
+library(wordcloud)
+library(RColorBrewer)
+library(stringr)
+library(ggwordcloud)
+```
+
+
+Read files
+```{r, warning=FALSE, message=FALSE,echo=FALSE}
+cleaned_hm <- read.csv("E:/GR 5243/HappyDB/happydb/data/cleaned_hm.CSV")
+head(cleaned_hm)
+
+demographic <- read.csv("E:/GR 5243/HappyDB/happydb/data/demographic.CSV")
+head(demographic)
+
+original_hm <- read.csv("E:/GR 5243/HappyDB/happydb/data/original_hm.CSV")
+head(original_hm)
+
+senselabel <- read.csv("E:/GR 5243/HappyDB/happydb/data/senselabel.CSV")
+head(senselabel)
+
+merged_df <- inner_join(cleaned_hm, demographic, by = "wid")
+```
+
+Missing Values
+```{r missing values, warning=FALSE, message=FALSE,echo=FALSE}
+merged_modified <- merged_df %>%
+  na.omit()
+df <- merged_modified %>% 
+  select(-hmid, -wid, -original_hm, -modified,
+         -num_sentence, -ground_truth_category,
+         -parenthood, -reflection_period)
+
+
+df$gender[df$gender == ""] <- NA
+df <- na.omit(df)
+
+df$gender[df$country == ""] <- NA
+df <- na.omit(df)
+```
+
+Data Exploration
+Differences in the types of exercise in happy moments between genders
+```{r, warning=FALSE, message=FALSE,echo=FALSE}
+exercise_df <- df %>%
+  filter(predicted_category == "exercise")
+write.csv(exercise_df, file = "E:/GR 5243/Spring2024-TZStatsADS-YangYu-proj/out/processed_moments.csv", row.names = FALSE)
+
+
+exercise_count <- exercise_df %>%
+  count(gender, predicted_category)
+
+p <- ggplot(exercise_count, aes(x = gender, y = n, fill = gender)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  facet_wrap(~predicted_category, scales = "free_y") + 
+  theme_minimal() +
+  labs(title = "Differences in the Types of Exercise in Happy Moments Between Genders",
+       x = "Gender", 
+       y = "Count of Exercise-related Happy Moments",
+       fill = "Gender")
+ggsave("plot.png", plot = p, width = 10, height = 6, dpi = 300)
+```
+
+Preliminary cleaning of text
+We clean the text by  removing punctuation, numbers, empty words and extra white space.
+```{r text preprocess, warning=FALSE, message=FALSE,echo=FALSE}
+df1 <- df
+clean_text <- function(text) {
+  text <- gsub("\\b[0-9]+\\b", "", text) 
+  text <- gsub("[0-9]+\\.[0-9]+", "", text) 
+  text <- gsub("\\b[0-9]+[A-Za-z0-9]+\\b", "", text) 
+  text <- gsub("[^A-Za-z' ]", "", text)
+  text <- gsub("\\s+", " ", text)
+  text <- trimws(text)
+  
+  return(text)
+}
+
+df1$cleaned_hm <- sapply(df1$cleaned_hm, clean_text)
+
+
+cat(df1$cleaned_hm[1:10], sep = "\n") 
+
+df2 <- df1
+df3 <- df1
+
+```
+
+Text Data Analysis
+1.Stop Words and Word Cloud
+```{r word cloud, warning=FALSE, message=FALSE,echo=FALSE}
+df_exercise <- df1 %>%
+  filter(predicted_category == "exercise")
+
+df_female <- df_exercise %>% filter(gender == "f")
+df_male <- df_exercise %>% filter(gender == "m")
+df_other <- df_exercise %>% filter(gender == "o")
+
+print(df_female)
+print(df_male)
+print(df_other)
+
+df_female1 <- df_female
+df_male1 <- df_male
+df_other1 <- df_other
+
+```
+
+
+(1)Female
+```{r female, warning=FALSE, message=FALSE,echo=FALSE}
+data_stop_words <-  stop_words
+df_female1_clean <- df_female1 %>%
+  unnest_tokens(word, cleaned_hm) %>%
+  anti_join(data_stop_words)
+
+word_freq_female <- df_female1_clean %>%
+  count(word, sort = TRUE)
+
+set.seed(1234) 
+wordcloud_female <- wordcloud(words = word_freq_female$word, freq = word_freq_female$n, min.freq = 1,
+          max.words = 100, random.order = FALSE, rot.per = 0.35,
+          colors = brewer.pal(8, "Dark2"))
+
+png("wordcloud_female.png", width = 1280, height = 800)
+wordcloud(words = word_freq_female$word, freq = word_freq_female$n, min.freq = 1,
+          max.words = 100, random.order = FALSE, rot.per = 0.35, colors = brewer.pal(8, "Dark2"))
+dev.off()
+```
+
+(2)Male
+```{r male, warning=FALSE, message=FALSE,echo=FALSE}
+data_stop_words <-  stop_words
+df_male1_clean <- df_male1 %>%
+  unnest_tokens(word, cleaned_hm) %>%
+  anti_join(data_stop_words)
+
+word_freq_male <- df_male1_clean %>%
+  count(word, sort = TRUE)
+
+set.seed(1234) 
+wordcloud_male <- wordcloud(words = word_freq_male$word, freq = word_freq_male$n, min.freq = 1,
+          max.words = 100, random.order = FALSE, rot.per = 0.35,
+          colors = brewer.pal(8, "Dark2"))
+png("wordcloud_male.png", width = 1280, height = 800)
+wordcloud(words = word_freq_male$word, freq = word_freq_male$n, min.freq = 1,
+          max.words = 100, random.order = FALSE, rot.per = 0.35, colors = brewer.pal(8, "Dark2"))
+dev.off()
+
+```
+
+(3)Other
+```{r other, warning=FALSE, message=FALSE,echo=FALSE}
+data_stop_words <-  stop_words
+df_other1_clean <- df_other1 %>%
+  unnest_tokens(word, cleaned_hm) %>%
+  anti_join(data_stop_words)
+
+word_freq_other <- df_other1_clean %>%
+  count(word, sort = TRUE)
+
+set.seed(1234) 
+wordcloud_other <- wordcloud(words = word_freq_other$word, freq = word_freq_other$n, min.freq = 1,
+          max.words = 100, random.order = FALSE, rot.per = 0.35,
+          colors = brewer.pal(8, "Dark2"))
+
+png("wordcloud_other.png", width = 1280, height = 800)
+wordcloud(words = word_freq_other$word, freq = word_freq_other$n, min.freq = 1,
+          max.words = 100, random.order = FALSE, rot.per = 0.35, colors = brewer.pal(8, "Dark2"))
+dev.off()
+
+```
+
+2. Frequency Words and Its Sentences
+(1)Female
+```{r female frequency,  warning=FALSE, message=FALSE,echo=FALSE}
+top_words_female <- head(word_freq_female$word, 3)
+
+original_sentences_female <- df_female1 %>%
+  filter(grepl(paste(top_words_female, collapse="|"), cleaned_hm)) %>%
+  .$cleaned_hm
+
+head(original_sentences_female)
+
+
+
+
+
+```
+Among the high-frequency words in our findings for moments that make women feel happy in their exercise are "gym", "workout", and "run". We also matched the original sentences in which the words were found.
+
+(2)Male
+```{r male frequency,  warning=FALSE, message=FALSE,echo=FALSE}
+top_words_male <- head(word_freq_male$word, 3)
+
+original_sentences_male <- df_male1 %>%
+  filter(grepl(paste(top_words_male, collapse="|"), cleaned_hm)) %>%
+  .$cleaned_hm
+
+head(original_sentences_male)
+```
+Among the high-frequency words in our findings for moments that make men feel happy in their exercise are "gym", "workout", and "run". We also matched the original sentences in which the words were found.
+
+(3)Other
+```{r other frequency,  warning=FALSE, message=FALSE,echo=FALSE}
+top_words_other <- head(word_freq_other$word, 3)
+
+original_sentences_other <- df_other1 %>%
+  filter(grepl(paste(top_words_other, collapse="|"), cleaned_hm)) %>%
+  .$cleaned_hm
+
+head(original_sentences_other)
+```
+Among the high-frequency words in our findings for moments that make other feel happy in their exercise are "gym", "night", and "time". We also matched the original sentences in which the words were found.
+
+
+
+
+
+References
+
+Asai, A., Evensen, S., Golshan, B., Halevy, A., Li, V., Lopatenko, A., Stepanov, D., 
+Suhara, Y., Tan, W.-C., Xu, Y. (2018). "HappyDB: A Corpus of 100,000 Crowdsourced 
+Happy Moments", LREC '18, May. (to appear)
+
